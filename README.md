@@ -2,8 +2,6 @@
 
 A PostgreSQL extension that prevents dangerous DELETE and UPDATE operations without WHERE clauses, implemented in Rust using the pgrx framework.
 
-This is a Rust/pgrx rewrite of the original [pg-safeupdate](https://github.com/eradman/pg-safeupdate) C extension by Eric Radman.
-
 ## Overview
 
 The pg_where_guard extension protects your database from accidental data loss by:
