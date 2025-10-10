@@ -1,3 +1,10 @@
+#[cfg(any(
+    feature = "pg14",
+    feature = "pg15",
+    feature = "pg16",
+    feature = "pg17",
+    feature = "pg18"
+))]
 use pgrx::pg_sys::JumbleState;
 use pgrx::prelude::*;
 use pgrx::pg_sys;
@@ -34,18 +41,12 @@ where
 }
 
 
-/// Hook function that checks if DELETE/UPDATE statements have WHERE clauses
-#[pg_guard]
-unsafe extern "C-unwind" fn where_checker(
+
+unsafe fn where_checker_internal(
     pstate: *mut pg_sys::ParseState,
     query: *mut pg_sys::Query,
-    jstate: *mut JumbleState
 ) {
-        // Check if pg_where_guard is enabled - if not, skip the check
-    if !PG_WHERE_GUARD_ENABLED.get() || query.is_null() {
-        if let Some(prev_hook) = PREV_POST_PARSE_ANALYZE_HOOK {
-            prev_hook(pstate, query, jstate);
-        }
+    if query.is_null() || !PG_WHERE_GUARD_ENABLED.get() {
         return;
     }
 
@@ -56,46 +57,77 @@ unsafe extern "C-unwind" fn where_checker(
         pg_list_foreach::<pg_sys::CommonTableExpr, _>(query_ref.cteList, |cte| {
             if !cte.ctequery.is_null() {
                 let cte_query = cte.ctequery as *mut pg_sys::Query;
-                // Recursively check the CTE query
-                where_checker(pstate, cte_query, jstate);
+                where_checker_internal(pstate, cte_query);
             }
         });
     }
 
-    // Check the main query based on command type
-    match query_ref.commandType {
-        pg_sys::CmdType::CMD_DELETE => {
-            // Assert that jointree is not null (like in C code)
-            if !query_ref.jointree.is_null() {
+    // Check DELETE or UPDATE must have WHERE
+    if !query_ref.jointree.is_null() {
+        match query_ref.commandType {
+            pg_sys::CmdType::CMD_DELETE | pg_sys::CmdType::CMD_UPDATE => {
                 let jointree = &*query_ref.jointree;
                 if jointree.quals.is_null() {
                     ereport!(
                         ERROR,
                         PgSqlErrorCode::ERRCODE_CARDINALITY_VIOLATION,
-                        "DELETE requires a WHERE clause"
+                        "{} requires a WHERE clause",
+                        if query_ref.commandType == pg_sys::CmdType::CMD_DELETE {
+                            "DELETE"
+                        } else {
+                            "UPDATE"
+                        }
                     );
                 }
             }
-        }
-        pg_sys::CmdType::CMD_UPDATE => {
-            // Assert that jointree is not null (like in C code)
-            if !query_ref.jointree.is_null() {
-                let jointree = &*query_ref.jointree;
-                if jointree.quals.is_null() {
-                    ereport!(
-                        ERROR,
-                        PgSqlErrorCode::ERRCODE_CARDINALITY_VIOLATION,
-                        "UPDATE requires a WHERE clause"
-                    );
-                }
-            }
-        }
-        _ => {
-            // Other command types are allowed
+            _ => {}
         }
     }
+}
 
-    // Call the previous hook if it exists (AFTER our checks, like in C code)
+
+#[cfg(feature = "pg13")]
+#[pg_guard]
+unsafe extern "C-unwind" fn where_checker(
+    pstate: *mut pg_sys::ParseState,
+    query: *mut pg_sys::Query,
+) {
+    if !PG_WHERE_GUARD_ENABLED.get() || query.is_null() {
+        if let Some(prev_hook) = PREV_POST_PARSE_ANALYZE_HOOK {
+            prev_hook(pstate, query);
+        }
+        return;
+    }
+
+    where_checker_internal(pstate, query);
+
+    if let Some(prev_hook) = PREV_POST_PARSE_ANALYZE_HOOK {
+        prev_hook(pstate, query);
+    }
+}
+
+#[cfg(any(
+    feature = "pg14",
+    feature = "pg15",
+    feature = "pg16",
+    feature = "pg17",
+    feature = "pg18"
+))]
+#[pg_guard]
+unsafe extern "C-unwind" fn where_checker(
+    pstate: *mut pg_sys::ParseState,
+    query: *mut pg_sys::Query,
+    jstate: *mut pg_sys::JumbleState,
+) {
+    if !PG_WHERE_GUARD_ENABLED.get() || query.is_null() {
+        if let Some(prev_hook) = PREV_POST_PARSE_ANALYZE_HOOK {
+            prev_hook(pstate, query, jstate);
+        }
+        return;
+    }
+
+    where_checker_internal(pstate, query);
+
     if let Some(prev_hook) = PREV_POST_PARSE_ANALYZE_HOOK {
         prev_hook(pstate, query, jstate);
     }
@@ -116,7 +148,22 @@ pub unsafe extern "C-unwind" fn _PG_init() {
 
     // Store the previous hook and install our hook
     PREV_POST_PARSE_ANALYZE_HOOK = pg_sys::post_parse_analyze_hook;
-    pg_sys::post_parse_analyze_hook = Some(where_checker);
+
+    #[cfg(feature = "pg13")]
+    {
+        pg_sys::post_parse_analyze_hook = Some(where_checker);
+    }
+
+    #[cfg(any(
+        feature = "pg14",
+        feature = "pg15",
+        feature = "pg16",
+        feature = "pg17",
+        feature = "pg18"
+    ))]
+    {
+        pg_sys::post_parse_analyze_hook = Some(where_checker);
+    }
 }
 
 /// Extension cleanup function
