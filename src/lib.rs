@@ -89,13 +89,13 @@ unsafe fn is_relation_in_allowlist(query: &pg_sys::Query) -> bool {
             .to_lowercase()
     };
 
-    for entry in allowlist_str.split(',') {
+    let allowlist_lower = allowlist_str.to_lowercase();
+    for entry in allowlist_lower.split(',') {
         let entry = entry.trim();
         if entry.is_empty() {
             continue;
         }
-        let entry_lower = entry.to_lowercase();
-        if let Some((schema_pat, table_pat)) = entry_lower.split_once('.') {
+        if let Some((schema_pat, table_pat)) = entry.split_once('.') {
             if table_pat == "*" {
                 if schema_pat == schema_name {
                     return true;
@@ -103,7 +103,7 @@ unsafe fn is_relation_in_allowlist(query: &pg_sys::Query) -> bool {
             } else if schema_pat == schema_name && table_pat == rel_name {
                 return true;
             }
-        } else if entry_lower == rel_name {
+        } else if entry == rel_name {
             return true;
         }
     }
@@ -199,7 +199,7 @@ unsafe fn where_checker_internal(
                     ereport!(
                         ERROR,
                         PgSqlErrorCode::ERRCODE_CARDINALITY_VIOLATION,
-                        msg.as_str()
+                        msg
                     );
                 }
             }
@@ -213,7 +213,7 @@ unsafe fn where_checker_internal(
                     ereport!(
                         ERROR,
                         PgSqlErrorCode::ERRCODE_CARDINALITY_VIOLATION,
-                        msg.as_str()
+                        msg
                     );
                 }
             }
