@@ -66,7 +66,7 @@ SELECT * FROM users;
 
 | GUC Parameter | Type | Default | Context | Description |
 |---------------|------|---------|---------|-------------|
-| `pg_where_guard.enabled` | bool | `true` | userset | Enable/disable WHERE clause enforcement |
+| `pg_where_guard.enabled` | bool | `true` | Suset | Enable/disable WHERE clause enforcement |
 | `pg_where_guard.protect_truncate` | bool | `true` | userset | Block TRUNCATE statements |
 | `pg_where_guard.allowlist` | string | `''` | userset | Comma-separated table/schema patterns to bypass (e.g., `staging.*, public.temp`) |
 
