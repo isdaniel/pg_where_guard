@@ -133,19 +133,21 @@ unsafe fn get_target_relation_name(query: &pg_sys::Query) -> String {
     }
     let rel_name = std::ffi::CStr::from_ptr(rel_name_ptr)
         .to_str()
-        .unwrap_or("<unknown>");
+        .unwrap_or("<unknown>")
+        .to_string();
 
     let namespace_oid = pg_sys::get_rel_namespace(rel_id);
     let ns_name_ptr = pg_sys::get_namespace_name(namespace_oid);
     if ns_name_ptr.is_null() {
-        return rel_name.to_string();
+        return rel_name;
     }
     let schema_name = std::ffi::CStr::from_ptr(ns_name_ptr)
         .to_str()
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_string();
 
     if schema_name.is_empty() || schema_name == "public" {
-        rel_name.to_string()
+        rel_name
     } else {
         format!("{schema_name}.{rel_name}")
     }
@@ -249,7 +251,7 @@ pub unsafe extern "C-unwind" fn _PG_init() {
         c"Enforce qualified updates",
         c"Prevent DML without a WHERE clause",
         &PG_WHERE_GUARD_ENABLED,
-        GucContext::Userset,
+        GucContext::Suset,  // PGC_SUSET - superuser can set
         GucFlags::default(),
     );
 
