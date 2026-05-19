@@ -55,7 +55,7 @@ unsafe fn is_relation_in_allowlist(query: &pg_sys::Query) -> bool {
     }
 
     let rt_index = query.resultRelation;
-    if rt_index <= 0 {
+    if rt_index <= 0 || query.rtable.is_null() {
         return false;
     }
 
@@ -75,16 +75,18 @@ unsafe fn is_relation_in_allowlist(query: &pg_sys::Query) -> bool {
     }
     let rel_name = std::ffi::CStr::from_ptr(rel_name_ptr)
         .to_str()
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_lowercase();
 
     let namespace_oid = pg_sys::get_rel_namespace(rel_id);
     let ns_name_ptr = pg_sys::get_namespace_name(namespace_oid);
     let schema_name = if ns_name_ptr.is_null() {
-        ""
+        String::new()
     } else {
         std::ffi::CStr::from_ptr(ns_name_ptr)
             .to_str()
             .unwrap_or("")
+            .to_lowercase()
     };
 
     for entry in allowlist_str.split(',') {
@@ -111,7 +113,7 @@ unsafe fn is_relation_in_allowlist(query: &pg_sys::Query) -> bool {
 
 unsafe fn get_target_relation_name(query: &pg_sys::Query) -> String {
     let rt_index = query.resultRelation;
-    if rt_index <= 0 {
+    if rt_index <= 0 || query.rtable.is_null() {
         return String::from("<unknown>");
     }
 
